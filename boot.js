@@ -1,6 +1,6 @@
 console.log("BOOT FILE LOADED");
 
-import CONFIG from "./config.js";
+const API_BASE = "https://starks-backend-m4tl.onrender.com";
 
 const app = document.getElementById("app");
 
@@ -15,20 +15,16 @@ async function boot() {
   app.innerHTML = "";
   log("BOOT STARTED", "#ffffff");
 
-  if (!CONFIG || !CONFIG.GAS_WEBAPP_URL) {
-    log("CONFIG ERROR", "red");
-    return;
-  }
-
   log("Connecting to backend...", "#00ff88");
 
   try {
-    const res = await fetch(`${CONFIG.GAS_WEBAPP_URL}?route=health`);
+    const res = await fetch(`${API_BASE}/api/board`);
     const data = await res.json();
 
     if (data.ok) {
       log("Backend Connected", "#00ff88");
-      log("Risk Engine Online", "#00ff88");
+      log(`Rows Received: ${data.rows.length}`, "#00ff88");
+      log("Sportsbook Live", "#00ff88");
     } else {
       log("Backend Error", "red");
     }
