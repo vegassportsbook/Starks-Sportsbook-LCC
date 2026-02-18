@@ -1,13 +1,880 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Starks Sportsbook LLC</title>
-  <link rel="stylesheet" href="./terminal.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Starks Sportsbook LLC — Edge OS</title>
+  <meta name="description" content="Vegas-style sportsbook intelligence terminal. Edge, signal, risk, slip, exports, AI brain." />
+  <style>
+    :root{
+      --bg0:#06070b;
+      --bg1:#0b1020;
+      --card:rgba(255,255,255,.06);
+      --card2:rgba(255,255,255,.08);
+      --line:rgba(255,255,255,.10);
+      --muted:rgba(233,240,255,.70);
+      --muted2:rgba(233,240,255,.50);
+      --text:#eaf0ff;
+
+      --good:#19f5a6;
+      --warn:#ffcf5a;
+      --bad:#ff5b6b;
+      --ice:#7fb7ff;
+
+      --shadow: 0 18px 55px rgba(0,0,0,.55);
+      --r14:14px;
+      --r18:18px;
+      --r24:24px;
+
+      --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:var(--font);
+      color:var(--text);
+      background:
+        radial-gradient(1200px 800px at 18% -10%, rgba(127,183,255,.22), transparent 55%),
+        radial-gradient(900px 650px at 88% 10%, rgba(25,245,166,.12), transparent 55%),
+        radial-gradient(700px 500px at 80% 82%, rgba(255,207,90,.10), transparent 50%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      overflow-x:hidden;
+    }
+
+    /* ---------- Layout Shell ---------- */
+    .shell{
+      min-height:100%;
+      display:grid;
+      grid-template-columns: 88px 1fr;
+    }
+
+    /* ---------- Left Rail ---------- */
+    .rail{
+      position:sticky;
+      top:0;
+      height:100vh;
+      padding:14px 10px;
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      border-right:1px solid var(--line);
+      backdrop-filter: blur(12px);
+    }
+    .rail .logo{
+      height:56px;
+      border-radius:16px;
+      background:
+        radial-gradient(120px 80px at 35% 30%, rgba(127,183,255,.35), transparent 55%),
+        radial-gradient(120px 80px at 75% 70%, rgba(25,245,166,.25), transparent 55%),
+        rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.10);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:900;
+      letter-spacing:.5px;
+      box-shadow: var(--shadow);
+      margin-bottom:14px;
+      user-select:none;
+    }
+    .rail .logo span{font-size:12px; opacity:.9}
+    .nav{
+      display:flex; flex-direction:column; gap:10px;
+      margin-top:8px;
+    }
+    .navbtn{
+      height:46px;
+      border-radius:16px;
+      background: rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.08);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      transition: transform .12s ease, background .12s ease, border .12s ease;
+      position:relative;
+    }
+    .navbtn:hover{transform: translateY(-1px); background: rgba(255,255,255,.07); border-color:rgba(255,255,255,.12)}
+    .navbtn.active{
+      background: linear-gradient(135deg, rgba(127,183,255,.22), rgba(25,245,166,.10));
+      border-color: rgba(127,183,255,.35);
+    }
+    .navbtn .dot{
+      width:8px;height:8px;border-radius:999px;
+      background: rgba(255,255,255,.25);
+      position:absolute; top:10px; right:10px;
+    }
+    .navbtn.active .dot{background: var(--good); box-shadow: 0 0 18px rgba(25,245,166,.45)}
+    .ico{font-size:18px; opacity:.92}
+
+    /* ---------- Main ---------- */
+    .main{
+      padding:18px 18px 90px;
+    }
+
+    /* ---------- Top Bar ---------- */
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:14px;
+      margin-bottom:14px;
+    }
+    .brandblock{
+      display:flex; flex-direction:column;
+      gap:2px;
+    }
+    .title{
+      display:flex; align-items:center; gap:10px;
+      font-weight:950;
+      letter-spacing:.35px;
+      font-size:18px;
+    }
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.10);
+      font-size:12px;
+      color: var(--muted);
+    }
+    .statusdot{
+      width:9px;height:9px;border-radius:999px;
+      background: var(--bad);
+      box-shadow: 0 0 14px rgba(255,91,107,.35);
+    }
+    .statusdot.ok{background: var(--good); box-shadow: 0 0 14px rgba(25,245,166,.35)}
+    .subtitle{
+      font-size:12px;
+      color: var(--muted2);
+    }
+
+    .topactions{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+    .btn{
+      user-select:none;
+      cursor:pointer;
+      padding:10px 12px;
+      border-radius:14px;
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.10);
+      color: var(--text);
+      font-weight:800;
+      font-size:12px;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      transition: transform .12s ease, background .12s ease, border .12s ease;
+    }
+    .btn:hover{transform: translateY(-1px); background: rgba(255,255,255,.08); border-color:rgba(255,255,255,.16)}
+    .btn.primary{
+      background: linear-gradient(135deg, rgba(127,183,255,.28), rgba(25,245,166,.12));
+      border-color: rgba(127,183,255,.35);
+    }
+    .btn.danger{
+      background: rgba(255,91,107,.12);
+      border-color: rgba(255,91,107,.30);
+    }
+
+    /* ---------- Tabs ---------- */
+    .tabs{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      padding:10px;
+      border-radius:18px;
+      background: rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.10);
+      backdrop-filter: blur(12px);
+      box-shadow: var(--shadow);
+      margin-bottom:14px;
+      overflow:auto;
+    }
+    .tab{
+      padding:10px 12px;
+      border-radius:14px;
+      cursor:pointer;
+      font-weight:900;
+      font-size:12px;
+      color: var(--muted);
+      border:1px solid transparent;
+      white-space:nowrap;
+    }
+    .tab.active{
+      color: var(--text);
+      background: rgba(255,255,255,.08);
+      border-color: rgba(255,255,255,.12);
+    }
+
+    /* ---------- Hero Banner ---------- */
+    .hero{
+      border-radius:24px;
+      background:
+        radial-gradient(900px 220px at 22% 10%, rgba(127,183,255,.25), transparent 60%),
+        radial-gradient(700px 240px at 88% 18%, rgba(25,245,166,.14), transparent 55%),
+        linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+      border:1px solid rgba(255,255,255,.10);
+      box-shadow: var(--shadow);
+      padding:16px 16px 14px;
+      display:flex;
+      justify-content:space-between;
+      gap:14px;
+      align-items:flex-end;
+      margin-bottom:14px;
+    }
+    .heroLeft{
+      display:flex; flex-direction:column; gap:10px;
+    }
+    .heroH{
+      font-size:14px;
+      font-weight:950;
+      letter-spacing:.35px;
+      opacity:.95;
+    }
+    .heroRow{
+      display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    }
+    .pill{
+      border-radius:999px;
+      padding:7px 10px;
+      font-size:12px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.20);
+      color: var(--muted);
+      display:inline-flex;
+      gap:8px;
+      align-items:center;
+    }
+    .pill b{color:var(--text)}
+    .pill.good b{color:var(--good)}
+    .pill.warn b{color:var(--warn)}
+    .pill.ice b{color:var(--ice)}
+    .heroRight{
+      text-align:right;
+      font-size:12px;
+      color: var(--muted2);
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-width:240px;
+    }
+    .kpis{
+      display:flex;
+      gap:10px;
+      justify-content:flex-end;
+      flex-wrap:wrap;
+    }
+    .kpi{
+      min-width:110px;
+      border-radius:18px;
+      padding:10px 12px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.20);
+    }
+    .kpi .k{font-size:11px; color:var(--muted2)}
+    .kpi .v{font-size:16px; font-weight:950; margin-top:3px}
+
+    /* ---------- Grid ---------- */
+    .grid{
+      display:grid;
+      grid-template-columns: 360px 1fr 360px;
+      gap:14px;
+      align-items:start;
+    }
+
+    .panel{
+      border-radius:18px;
+      background: rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.10);
+      backdrop-filter: blur(12px);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .phd{
+      padding:14px 14px 10px;
+      border-bottom:1px solid rgba(255,255,255,.08);
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      align-items:flex-start;
+    }
+    .ptitle{
+      font-weight:950;
+      letter-spacing:.35px;
+      font-size:12px;
+      opacity:.95;
+    }
+    .psub{
+      margin-top:3px;
+      font-size:11px;
+      color: var(--muted2);
+    }
+    .pbd{padding:12px 14px 14px}
+
+    .hr{height:1px;background:rgba(255,255,255,.08); margin:12px 0}
+
+    /* ---------- Controls ---------- */
+    .field{display:flex; flex-direction:column; gap:6px; margin-bottom:10px}
+    .label{font-size:11px; color:var(--muted2)}
+    .input, .select{
+      width:100%;
+      padding:10px 12px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.24);
+      color: var(--text);
+      outline:none;
+    }
+    .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+    .chips{display:flex; gap:8px; flex-wrap:wrap}
+    .chip{
+      padding:8px 10px;
+      border-radius:999px;
+      cursor:pointer;
+      user-select:none;
+      font-size:12px;
+      font-weight:900;
+      background: rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.10);
+      color: var(--muted);
+    }
+    .chip.active{
+      color: var(--text);
+      background: rgba(255,255,255,.08);
+      border-color: rgba(255,255,255,.15);
+    }
+
+    /* ---------- Board: Sportsbook Cards ---------- */
+    .slateWrap{
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+    .sportSection{
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.18);
+      overflow:hidden;
+    }
+    .sportHd{
+      padding:12px 12px 10px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      border-bottom:1px solid rgba(255,255,255,.08);
+      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+    }
+    .sportName{
+      display:flex; align-items:center; gap:10px;
+      font-weight:950;
+      letter-spacing:.35px;
+      font-size:12px;
+    }
+    .sportCount{
+      font-size:11px; color:var(--muted2);
+    }
+    .events{
+      display:flex;
+      flex-direction:column;
+    }
+    .event{
+      padding:12px;
+      border-bottom:1px solid rgba(255,255,255,.06);
+      display:grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap:12px;
+      align-items:center;
+    }
+    .event:last-child{border-bottom:none}
+    .meta{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-width:0;
+    }
+    .match{
+      font-weight:950;
+      font-size:13px;
+      letter-spacing:.2px;
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .small{font-size:11px; color:var(--muted2)}
+    .badges{display:flex; gap:8px; flex-wrap:wrap}
+    .tag{
+      font-size:11px;
+      border-radius:999px;
+      padding:5px 8px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.06);
+      color: var(--muted);
+      display:inline-flex;
+      gap:6px;
+      align-items:center;
+    }
+    .tag.good{border-color: rgba(25,245,166,.35); background: rgba(25,245,166,.08); color: rgba(233,255,248,.92)}
+    .tag.warn{border-color: rgba(255,207,90,.35); background: rgba(255,207,90,.09); color: rgba(255,246,222,.92)}
+    .tag.bad{border-color: rgba(255,91,107,.35); background: rgba(255,91,107,.09); color: rgba(255,228,231,.92)}
+    .tag.ice{border-color: rgba(127,183,255,.35); background: rgba(127,183,255,.10); color: rgba(232,242,255,.92)}
+
+    .markets{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap:10px;
+    }
+    .oddBtn{
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.06);
+      padding:10px 10px;
+      cursor:pointer;
+      user-select:none;
+      transition: transform .12s ease, background .12s ease, border .12s ease;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-width:0;
+      position:relative;
+      overflow:hidden;
+    }
+    .oddBtn:hover{transform: translateY(-1px); background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.16)}
+    .oddBtn.picked{
+      background: linear-gradient(135deg, rgba(25,245,166,.14), rgba(127,183,255,.10));
+      border-color: rgba(25,245,166,.35);
+      box-shadow: 0 0 0 1px rgba(25,245,166,.10) inset;
+    }
+    .oddTop{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      min-width:0;
+    }
+    .mkt{
+      font-weight:950;
+      font-size:11px;
+      color: var(--muted);
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .odds{
+      font-weight:950;
+      font-size:13px;
+      letter-spacing:.2px;
+      white-space:nowrap;
+    }
+    .oddMid{
+      display:flex;
+      justify-content:space-between;
+      gap:8px;
+      align-items:center;
+    }
+    .lineTxt{
+      font-size:11px;
+      color: var(--text);
+      opacity:.92;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      max-width:100%;
+    }
+    .heat{
+      font-size:11px;
+      font-weight:950;
+      padding:4px 7px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.20);
+      color: var(--muted);
+      white-space:nowrap;
+    }
+    .heat.good{border-color:rgba(25,245,166,.35); color:var(--good)}
+    .heat.warn{border-color:rgba(255,207,90,.35); color:var(--warn)}
+    .heat.bad{border-color:rgba(255,91,107,.35); color:var(--bad)}
+
+    .flashUp{ animation: flashUp .7s ease; }
+    .flashDown{ animation: flashDown .7s ease; }
+    @keyframes flashUp { 0%{box-shadow:0 0 0 rgba(25,245,166,0)} 20%{box-shadow:0 0 18px rgba(25,245,166,.35)} 100%{box-shadow:0 0 0 rgba(25,245,166,0)} }
+    @keyframes flashDown { 0%{box-shadow:0 0 0 rgba(255,91,107,0)} 20%{box-shadow:0 0 18px rgba(255,91,107,.35)} 100%{box-shadow:0 0 0 rgba(255,91,107,0)} }
+
+    /* ---------- Right AI / Risk Panel ---------- */
+    .aiBox{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .bigScore{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:10px;
+      padding:12px;
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.18);
+    }
+    .bigScore .l .k{font-size:11px; color:var(--muted2)}
+    .bigScore .l .v{font-size:22px; font-weight:950; margin-top:3px}
+    .bigScore .r{
+      text-align:right;
+      font-size:11px;
+      color:var(--muted2);
+    }
+    .gauge{
+      height:10px;
+      border-radius:999px;
+      background: rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.10);
+      overflow:hidden;
+      margin-top:10px;
+    }
+    .gauge > div{
+      height:100%;
+      width:50%;
+      background: linear-gradient(90deg, rgba(25,245,166,.85), rgba(255,207,90,.85), rgba(255,91,107,.85));
+      border-radius:999px;
+    }
+    .insight{
+      padding:12px;
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.18);
+    }
+    .insight .h{font-weight:950; font-size:12px}
+    .insight .p{margin-top:6px; font-size:12px; color:var(--muted); line-height:1.35}
+
+    .list{
+      display:flex; flex-direction:column; gap:8px;
+      margin-top:10px;
+    }
+    .li{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      padding:10px 10px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.05);
+    }
+    .li .a{font-weight:900; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:220px;}
+    .li .b{font-weight:950; font-size:12px; color:var(--muted)}
+    .li .b.good{color:var(--good)}
+    .li .b.warn{color:var(--warn)}
+    .li .b.bad{color:var(--bad)}
+
+    /* ---------- Slip Drawer (mobile) ---------- */
+    .drawer{
+      position:fixed;
+      left:100px;
+      right:14px;
+      bottom:14px;
+      border-radius:22px;
+      padding:10px 10px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.40);
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow);
+      display:none;
+      z-index:50;
+    }
+    .drawerRow{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+    }
+    .drawer .mini{
+      font-size:11px;
+      color:var(--muted2);
+    }
+    .drawer .count{
+      font-weight:950;
+      font-size:13px;
+    }
+
+    /* ---------- Ticker ---------- */
+    .ticker{
+      margin-top:14px;
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.22);
+      padding:10px 12px;
+      color: var(--muted);
+      font-size:12px;
+      overflow:hidden;
+      white-space:nowrap;
+      text-overflow:ellipsis;
+    }
+
+    /* ---------- Responsive ---------- */
+    @media (max-width: 1200px){
+      .grid{grid-template-columns: 320px 1fr}
+      .grid .rightPanel{display:none}
+      .drawer{display:block}
+    }
+    @media (max-width: 960px){
+      .shell{grid-template-columns: 78px 1fr}
+      .main{padding:14px 14px 96px}
+      .grid{grid-template-columns:1fr}
+      .grid .leftPanel{order:2}
+      .grid .midPanel{order:1}
+      .drawer{left:92px}
+      .markets{grid-template-columns: repeat(2, minmax(0,1fr))}
+      .event{grid-template-columns:1fr}
+      .hero{flex-direction:column; align-items:flex-start}
+      .heroRight{min-width:0; width:100%; text-align:left}
+      .kpis{justify-content:flex-start}
+    }
+  </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div class="shell">
+    <aside class="rail">
+      <div class="logo"><span>EDGE<br/>OS</span></div>
 
-  <script type="module" src="./boot.js"></script>
+      <div class="nav">
+        <div class="navbtn active" data-nav="sportsbook" title="Sportsbook"><div class="dot"></div><div class="ico">🏟️</div></div>
+        <div class="navbtn" data-nav="edges" title="Edge Tracker"><div class="dot"></div><div class="ico">📈</div></div>
+        <div class="navbtn" data-nav="risk" title="Risk Room"><div class="dot"></div><div class="ico">🧠</div></div>
+        <div class="navbtn" data-nav="settings" title="Settings"><div class="dot"></div><div class="ico">⚙️</div></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="brandblock">
+          <div class="title">
+            STARKS SPORTSBOOK LLC
+            <span class="badge"><span class="statusdot" id="statusDot"></span><span id="statusText">Connecting…</span></span>
+          </div>
+          <div class="subtitle" id="subtitle">Vegas-style sportsbook intelligence • Edge + Signal + Risk • Mobile-ready</div>
+        </div>
+
+        <div class="topactions">
+          <div class="btn" id="btnPing">📡 Ping</div>
+          <div class="btn primary" id="btnReload">⚡ Reload</div>
+          <div class="btn" id="btnDemo">🎛 Demo</div>
+          <div class="btn" id="btnExport">⬇️ Export CSV</div>
+          <div class="btn danger" id="btnClearSlip">🧹 Clear Slip</div>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" data-tab="highlights">⭐ Highlights</div>
+        <div class="tab" data-tab="event">📋 Event Builder</div>
+        <div class="tab" data-tab="feed">🧾 Bets Feed</div>
+        <div class="tab" data-tab="brain">🧠 AI Brain</div>
+        <div class="tab" data-tab="lab">🧪 Performance Lab</div>
+      </div>
+
+      <section class="hero">
+        <div class="heroLeft">
+          <div class="heroH" id="heroTitle">TODAY’S SLATE • LIVE EDGE BOARD</div>
+          <div class="heroRow">
+            <span class="pill good">Signal Engine: <b id="heroSignal">ARMED</b></span>
+            <span class="pill ice">Mode: <b id="heroMode">SINGLE</b></span>
+            <span class="pill warn">Demo Drift: <b id="heroDrift">ON</b></span>
+            <span class="pill">Refresh: <b id="heroRefresh">15s</b></span>
+          </div>
+        </div>
+
+        <div class="heroRight">
+          <div class="kpis">
+            <div class="kpi">
+              <div class="k">Markets</div>
+              <div class="v" id="kpiMarkets">—</div>
+            </div>
+            <div class="kpi">
+              <div class="k">Slip</div>
+              <div class="v" id="kpiSlip">0</div>
+            </div>
+            <div class="kpi">
+              <div class="k">Top Signal</div>
+              <div class="v" id="kpiTopSignal">—</div>
+            </div>
+          </div>
+          <div class="small" id="lastUpdated">Last updated: —</div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <!-- LEFT: Controls -->
+        <div class="panel leftPanel">
+          <div class="phd">
+            <div>
+              <div class="ptitle">BOARD CONTROLS</div>
+              <div class="psub">Filter + sort + session controls</div>
+            </div>
+            <div class="badge"><span class="statusdot ok"></span><span>LIVE</span></div>
+          </div>
+
+          <div class="pbd">
+            <div class="row2">
+              <div class="field">
+                <div class="label">Mode</div>
+                <div class="chips" id="modeChips">
+                  <div class="chip active" data-mode="single">SINGLE</div>
+                  <div class="chip" data-mode="parlay">PARLAY</div>
+                </div>
+              </div>
+              <div class="field">
+                <div class="label">Sort</div>
+                <select class="select" id="sortBy">
+                  <option value="signal_desc">Signal (High → Low)</option>
+                  <option value="edge_desc">Edge (High → Low)</option>
+                  <option value="start_asc">Start (Soonest)</option>
+                  <option value="sport_asc">Sport (A → Z)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="row2">
+              <div class="field">
+                <div class="label">Sport</div>
+                <select class="select" id="sportFilter">
+                  <option value="ALL">ALL</option>
+                </select>
+              </div>
+              <div class="field">
+                <div class="label">Search (team / matchup / book)</div>
+                <input class="input" id="search" placeholder="e.g. Kansas, BOS, DraftKings…" />
+              </div>
+            </div>
+
+            <div class="row2">
+              <div class="field">
+                <div class="label">Min Edge %</div>
+                <input class="input" id="minEdge" type="number" step="0.1" value="0" />
+              </div>
+              <div class="field">
+                <div class="label">Min Signal</div>
+                <input class="input" id="minSignal" type="number" step="1" value="0" />
+              </div>
+            </div>
+
+            <div class="hr"></div>
+
+            <div class="row2">
+              <div class="field">
+                <div class="label">Stake</div>
+                <input class="input" id="stake" type="number" min="1" step="1" value="25" />
+              </div>
+              <div class="field">
+                <div class="label">Bankroll</div>
+                <input class="input" id="bankroll" type="number" min="0" step="1" value="10000" />
+              </div>
+            </div>
+
+            <div class="hr"></div>
+
+            <div class="small">
+              ✅ Click odds tiles to add to slip. <br/>
+              🔥 Steam = consecutive moves. <br/>
+              Signal drives the board order + “watch list”.
+            </div>
+          </div>
+        </div>
+
+        <!-- MIDDLE: Sportsbook Slate -->
+        <div class="panel midPanel">
+          <div class="phd">
+            <div>
+              <div class="ptitle">SPORTSBOOK SLATE</div>
+              <div class="psub">Grouped by sport • markets are selectable tiles</div>
+            </div>
+            <div class="badge"><span class="statusdot ok"></span><span id="boardBadge">Online</span></div>
+          </div>
+
+          <div class="pbd">
+            <div class="slateWrap" id="slate"></div>
+          </div>
+        </div>
+
+        <!-- RIGHT: AI Brain / Risk Room -->
+        <div class="panel rightPanel">
+          <div class="phd">
+            <div>
+              <div class="ptitle">AI BRAIN • RISK ROOM</div>
+              <div class="psub">Risk scoring + slip intelligence</div>
+            </div>
+            <div class="badge"><span class="statusdot ok"></span><span id="aiBadge">Armed</span></div>
+          </div>
+
+          <div class="pbd">
+            <div class="aiBox">
+              <div class="bigScore">
+                <div class="l">
+                  <div class="k">Slip Risk Score</div>
+                  <div class="v" id="riskScore">—</div>
+                  <div class="gauge"><div id="riskBar" style="width:50%"></div></div>
+                </div>
+                <div class="r">
+                  <div>Mode: <b id="riskMode">SINGLE</b></div>
+                  <div>Picks: <b id="riskPicks">0</b></div>
+                  <div>EV: <b id="riskEv">—</b></div>
+                </div>
+              </div>
+
+              <div class="insight">
+                <div class="h">AI Insight</div>
+                <div class="p" id="aiText">
+                  Watching slate for steam + signal spikes. Build a slip and I’ll grade it (risk, EV, and volatility).
+                </div>
+              </div>
+
+              <div class="insight">
+                <div class="h">Top Signals (Watchlist)</div>
+                <div class="list" id="watchlist"></div>
+              </div>
+
+              <div class="hr"></div>
+
+              <div class="btn primary" id="btnSim">🎟 Simulate Ticket</div>
+              <div class="btn" id="btnOpenSlip">🧾 Open Slip Details</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="ticker" id="ticker">Loading…</div>
+
+      <div class="drawer" id="drawer">
+        <div class="drawerRow">
+          <div>
+            <div class="mini">Slip</div>
+            <div class="count"><span id="drawerCount">0</span> picks • <span id="drawerMode">SINGLE</span></div>
+          </div>
+          <div class="btn primary" id="drawerOpen">Open</div>
+        </div>
+      </div>
+
+      <!-- Slip Modal -->
+      <dialog id="slipModal" style="border:none; padding:0; border-radius:18px; background:transparent;">
+        <div style="width:min(680px, 92vw); background:rgba(10,12,18,.92); border:1px solid rgba(255,255,255,.14); border-radius:18px; box-shadow:var(--shadow); backdrop-filter: blur(18px); overflow:hidden;">
+          <div style="padding:14px 14px 10px; border-bottom:1px solid rgba(255,255,255,.10); display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <div style="font-weight:950; letter-spacing:.3px;">🧾 Slip Details</div>
+            <div class="btn" id="btnCloseSlip">Close</div>
+          </div>
+          <div style="padding:14px;">
+            <div id="slipBody" class="small">—</div>
+          </div>
+        </div>
+      </dialog>
+
+      <script defer src="./boot.js"></script>
+    </main>
+  </div>
 </body>
 </html>
