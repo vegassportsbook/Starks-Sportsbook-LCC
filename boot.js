@@ -1,58 +1,21 @@
-console.log("BOOT FILE LOADED");
+console.log("BOOT FILE LOADED — HYBRID SPORTSBOOK UI");
 
 const API_BASE = "https://starks-backend-m4tl.onrender.com";
-const REFRESH_MS = 15000; // 15s live terminal cadence
+const REFRESH_MS = 15000;
 
-// DEMO MODE: if true, we add small drift to odds so movement effects show even with static backend data
+// Visual demo drift (keeps your “alive” feel)
 const DEMO_DRIFT_ENABLED = true;
+const DRIFT_MAX_POINTS = 6;
+const DRIFT_CHANCE = 0.70;
 
-// Drift parameters (Vegas-style tiny moves)
-const DRIFT_MAX_POINTS = 6;      // max move in a refresh, e.g. 6 points
-const DRIFT_CHANCE = 0.70;       // 70% chance a row drifts each refresh
-const STEAM_WINDOW = 4;          // how many recent moves we consider for "steam"
-const STEAM_MIN_STREAK = 2;      // 2+ moves same direction => STEAM badge
+const STEAM_WINDOW = 4;
+const STEAM_MIN_STREAK = 2;
 
 const app = document.getElementById("app");
 
 // ---------- Helpers ----------
-function toNumber(x) {
-  const n = Number(x);
-  return Number.isFinite(n) ? n : null;
-}
-
-function americanToDecimal(american) {
-  const a = toNumber(american);
-  if (a === null || a === 0) return null;
-  if (a > 0) return 1 + (a / 100);
-  return 1 + (100 / Math.abs(a));
-}
-
-function americanToImpliedProb(american) {
-  const a = toNumber(american);
-  if (a === null || a === 0) return null;
-  if (a > 0) return 100 / (a + 100);
-  return Math.abs(a) / (Math.abs(a) + 100);
-}
-
-function fmtPct(p) {
-  if (p === null) return "—";
-  return (p * 100).toFixed(1) + "%";
-}
-
-function fmtMoney(n) {
-  if (!Number.isFinite(n)) return "—";
-  return "$" + n.toFixed(2);
-}
-
-function edgeClass(edgePct) {
-  const e = toNumber(edgePct);
-  if (e === null) return "edge-bad";
-  if (e >= 3) return "edge-good";
-  if (e >= 2) return "edge-warn";
-  return "edge-bad";
-}
-
-function esc(s) {
+function toNumber(x){ const n = Number(x); return Number.isFinite(n) ? n : null; }
+function esc(s){
   return String(s ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -60,140 +23,127 @@ function esc(s) {
     .replaceAll('"', "&quot;");
 }
 
-function rowKey(r) {
-  return [
-    r.sport, r.start, r.matchup, r.market, r.line, r.book
-  ].map(x => String(x ?? "")).join("|");
+function americanToDecimal(a){
+  const n = toNumber(a);
+  if (n === null || n === 0) return null;
+  if (n > 0) return 1 + (n/100);
+  return 1 + (100/Math.abs(n));
+}
+function americanToImpliedProb(a){
+  const n = toNumber(a);
+  if (n === null || n === 0) return null;
+  if (n > 0) return 100/(n+100);
+  return Math.abs(n)/(Math.abs(n)+100);
+}
+function fmtMoney(n){
+  if (!Number.isFinite(n)) return "—";
+  return "$" + n.toFixed(2);
+}
+function fmtPct(p){
+  if (p === null) return "—";
+  return (p*100).toFixed(1) + "%";
 }
 
-// ---------- Phase 2: Signal helpers ----------
-function signalTier(score) {
+function rowKey(r){
+  return [r.sport, r.start, r.matchup, r.market, r.line, r.book]
+    .map(x => String(x ?? "")).join("|");
+}
+
+function signalTier(score){
   const s = toNumber(score) ?? 0;
-  if (s >= 81) return "signal-elite";
-  if (s >= 61) return "signal-sharp";
-  if (s >= 31) return "signal-interest";
-  return "signal-noise";
-}
-
-function signalLabel(score, label) {
-  if (label) return String(label);
-  const s = toNumber(score) ?? 0;
-  if (s >= 81) return "ELITE";
-  if (s >= 61) return "SHARP";
-  if (s >= 31) return "INTEREST";
-  return "NOISE";
-}
-
-function ensureSignalStyles() {
-  if (document.getElementById("signal-style-v2")) return;
-  const style = document.createElement("style");
-  style.id = "signal-style-v2";
-  style.textContent = `
-    /* Phase 2 signal styling (injected by boot.js) */
-    .signal-elite {
-      background: rgba(25,245,166,.10);
-      box-shadow: inset 0 0 0 1px rgba(25,245,166,.35);
-    }
-    .signal-sharp {
-      background: rgba(59,130,246,.10);
-      box-shadow: inset 0 0 0 1px rgba(59,130,246,.35);
-    }
-    .signal-interest {
-      background: rgba(250,204,21,.08);
-      box-shadow: inset 0 0 0 1px rgba(250,204,21,.22);
-    }
-    .signal-noise { opacity: .78; }
-    .sigpill{
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,.18);
-      background: rgba(0,0,0,.25);
-      letter-spacing: .3px;
-      opacity: .95;
-      line-height: 1.4;
-    }
-    .sigwrap{
-      display:flex;
-      align-items:center;
-      gap:8px;
-      white-space: nowrap;
-    }
-  `;
-  document.head.appendChild(style);
+  if (s >= 81) return {cls:"sigElite", short:"ELITE"};
+  if (s >= 61) return {cls:"sigSharp", short:"SHARP"};
+  if (s >= 31) return {cls:"sigInt", short:"INT"};
+  return {cls:"sigNoise", short:"NOISE"};
 }
 
 // ---------- State ----------
 let state = {
-  rows: [],
-  slip: [],
+  backendOk: false,
+  lastUpdated: null,
 
-  mode: "single",
+  rows: [],
+  grouped: [],
+
+  // movement memory
+  previousOddsMap: {},
+  moveHistoryMap: {},
+  lastMoveTick: [],
+
+  // filters/sort
+  sport: "ALL",
+  search: "",
+  minEdge: 0,
+  minSignal: 0,
+  steamOnly: false,
+  sortMode: "signal", // signal | edge | start
+
+  // slip
+  mode: "parlay", // parlay | single
   stake: 25,
   bankroll: 10000,
+  slip: [],
 
-  lastUpdated: null,
-  backendOk: false,
+  // performance
+  perf: {
+    total_tickets: 0,
+    settled_tickets: 0,
+    wins: 0,
+    losses: 0,
+    winrate: 0,
+    profit: 0,
+    cost: 0,
+    roi: 0,
+    profit_30d: 0
+  },
 
-  // Vegas movement memory
-  previousOddsMap: {},          // key -> last odds (number)
-  moveHistoryMap: {},           // key -> array of directions: +1 or -1
-  lastMoveTick: [],             // array of strings for ticker
-
-  ticker: "STARKS Terminal Ready • Click any row to add it to the slip • EV + implied prob live • Parlay math online",
+  ticker: "STARKS Edge OS • Hybrid Sportsbook + Risk Desk • Loading…"
 };
 
 // ---------- Normalization ----------
-function normalizeRow(r) {
+function normalizeRow(r){
   const odds = toNumber(r.odds);
+  const edge = toNumber(r.edge);
+  const signal = toNumber(r.signal_score) ?? 0;
+
   const impliedP = odds != null ? americanToImpliedProb(odds) : null;
   const dec = odds != null ? americanToDecimal(odds) : null;
 
-  const edgePct = toNumber(r.edge);
-  const modelP = (impliedP != null && edgePct != null)
-    ? Math.max(0, Math.min(1, impliedP + (edgePct / 100)))
+  const modelP = (impliedP != null && edge != null)
+    ? Math.max(0, Math.min(1, impliedP + (edge/100)))
     : null;
 
   return {
     ...r,
-
-    // Normalize odds/math fields
     odds,
+    edge,
+    signal_score: signal,
     impliedP,
     modelP,
     dec,
 
-    // Movement fields
+    // movement UI
     previousOdds: null,
-    moveDir: 0,          // +1 (worse) / -1 (better) / 0 (no move)
-    steam: false,        // steam streak badge (frontend)
+    moveDir: 0,      // -1 better / +1 worse
+    steam: false
   };
 }
 
-// ---------- Vegas drift simulation ----------
-function applyDemoDrift(rows) {
+// ---------- Demo drift ----------
+function applyDemoDrift(rows){
   if (!DEMO_DRIFT_ENABLED) return rows;
-
   return rows.map(r => {
     if (r.odds == null) return r;
-
-    // Chance to drift
     if (Math.random() > DRIFT_CHANCE) return r;
 
-    const magnitude = Math.floor(Math.random() * DRIFT_MAX_POINTS) + 1; // 1..max
+    const magnitude = Math.floor(Math.random() * DRIFT_MAX_POINTS) + 1;
     const direction = Math.random() > 0.5 ? 1 : -1;
 
     let next = r.odds;
 
-    if (next < 0) {
-      // -110 -> -112 (worse) if direction=+1, or -108 (better) if direction=-1
-      next = next + (direction * -magnitude);
-    } else {
-      // +135 -> +140 (better payout) if direction=+1; +130 if direction=-1
-      next = next + (direction * magnitude);
-    }
+    if (next < 0) next = next + (direction * -magnitude);
+    else next = next + (direction * magnitude);
 
-    // Keep it within sane range
     if (next > 500) next = 500;
     if (next < -500) next = -500;
     if (next === 0) next = r.odds;
@@ -202,8 +152,8 @@ function applyDemoDrift(rows) {
   });
 }
 
-// ---------- Movement detection + steam ----------
-function updateMovement(rows) {
+// ---------- Movement + steam ----------
+function updateMovement(rows){
   const tickerEvents = [];
 
   rows.forEach(r => {
@@ -213,7 +163,7 @@ function updateMovement(rows) {
     r.previousOdds = prev ?? null;
     r.moveDir = 0;
 
-    if (r.odds != null && prev != null && r.odds !== prev) {
+    if (r.odds != null && prev != null && r.odds !== prev){
       const better =
         (prev < 0 && r.odds > prev) ||  // -110 -> -108
         (prev > 0 && r.odds > prev);    // +135 -> +140
@@ -221,332 +171,127 @@ function updateMovement(rows) {
       r.moveDir = better ? -1 : +1;
 
       const arrow = better ? "▼" : "▲";
-      const evStr = `${r.matchup} ${prev} → ${r.odds} ${arrow} (${r.book || "Book"})`;
-      tickerEvents.push(evStr);
+      tickerEvents.push(`${r.matchup} ${prev} → ${r.odds} ${arrow} (${r.book || "Book"})`);
 
       if (!state.moveHistoryMap[key]) state.moveHistoryMap[key] = [];
       state.moveHistoryMap[key].push(r.moveDir);
-      if (state.moveHistoryMap[key].length > STEAM_WINDOW) {
-        state.moveHistoryMap[key].shift();
-      }
+      if (state.moveHistoryMap[key].length > STEAM_WINDOW) state.moveHistoryMap[key].shift();
 
       const hist = state.moveHistoryMap[key];
       const last = hist[hist.length - 1];
       let streak = 1;
-      for (let i = hist.length - 2; i >= 0; i--) {
+      for (let i = hist.length - 2; i >= 0; i--){
         if (hist[i] === last) streak++;
         else break;
       }
       r.steam = streak >= STEAM_MIN_STREAK;
     } else {
-      if (state.moveHistoryMap[key] && state.moveHistoryMap[key].length > STEAM_WINDOW) {
+      r.steam = false;
+      if (state.moveHistoryMap[key] && state.moveHistoryMap[key].length > STEAM_WINDOW){
         state.moveHistoryMap[key] = state.moveHistoryMap[key].slice(-STEAM_WINDOW);
       }
-      r.steam = false;
     }
 
     if (r.odds != null) state.previousOddsMap[key] = r.odds;
   });
 
-  if (tickerEvents.length) {
+  if (tickerEvents.length){
     state.lastMoveTick = [...tickerEvents, ...state.lastMoveTick].slice(0, 10);
   }
 }
 
-// ---------- UI ----------
-function render() {
-  ensureSignalStyles();
+// ---------- Group slate like sportsbook ----------
+function buildSlate(rows){
+  // group by sport -> matchup/start
+  const bySport = new Map();
 
-  const last = state.lastUpdated ? new Date(state.lastUpdated).toLocaleTimeString() : "—";
+  for (const r of rows){
+    const sport = r.sport || "OTHER";
+    const gKey = `${sport}|${r.start || ""}|${r.matchup || ""}`;
 
-  app.innerHTML = `
-    <div class="shell">
-      <div class="topbar">
-        <div class="brand">
-          <div class="badge"></div>
-          <div>
-            <div class="brand-title">STARKS SPORTSBOOK LLC</div>
-            <div class="brand-sub">Vegas Terminal • Live Board • Risk Room</div>
-          </div>
-        </div>
+    if (!bySport.has(sport)) bySport.set(sport, new Map());
+    const m = bySport.get(sport);
 
-        <div class="statusline">
-          <div class="dot ${state.backendOk ? "ok" : "bad"}"></div>
-          <div>${state.backendOk ? "Backend OK" : "Backend Issue"}</div>
-          <div>•</div>
-          <div>Last: ${esc(last)}</div>
-          <div>•</div>
-          <div>Auto: ${Math.round(REFRESH_MS/1000)}s</div>
-        </div>
-
-        <div class="actions">
-          <div class="btn" id="btnPing">Ping</div>
-          <div class="btn primary" id="btnReload">Reload Board</div>
-          <div class="btn" id="btnDemo">Demo Data</div>
-        </div>
-      </div>
-
-      <div class="grid">
-        <!-- Left -->
-        <div class="panel">
-          <div class="panel-hd">
-            <div>
-              <div class="panel-title">BOARD CONTROLS</div>
-              <div class="panel-sub">Filters + session controls</div>
-            </div>
-            <div class="chip">Mode: <b style="color:var(--good)">&nbsp;${esc(state.mode.toUpperCase())}</b></div>
-          </div>
-
-          <div class="panel-bd">
-            <div class="kv"><span>Refresh</span><b>${(REFRESH_MS/1000)}s</b></div>
-            <div class="kv"><span>Rows</span><b>${state.rows.length}</b></div>
-            <div class="kv"><span>Demo Drift</span><b>${DEMO_DRIFT_ENABLED ? "ON" : "OFF"}</b></div>
-
-            <div class="hr"></div>
-
-            <div class="row">
-              <div style="flex:1">
-                <div class="small">Stake</div>
-                <input class="input" id="stake" type="number" min="1" step="1" value="${state.stake}">
-              </div>
-              <div style="flex:1">
-                <div class="small">Bankroll</div>
-                <input class="input" id="bankroll" type="number" min="0" step="1" value="${state.bankroll}">
-              </div>
-            </div>
-
-            <div class="pillrow" style="margin-top:12px;">
-              <div class="pill ${state.mode==="single" ? "active" : ""}" data-mode="single">SINGLE</div>
-              <div class="pill ${state.mode==="parlay" ? "active" : ""}" data-mode="parlay">PARLAY</div>
-            </div>
-
-            <div class="hr"></div>
-
-            <div class="small">Vegas tip: Watch odds flashes for movement. 🔥 = steam. Signal ranks top-down.</div>
-          </div>
-        </div>
-
-        <!-- Middle: Board -->
-        <div class="panel">
-          <div class="panel-hd">
-            <div>
-              <div class="panel-title">LIVE BETTING BOARD</div>
-              <div class="panel-sub">Click a row to add to slip</div>
-            </div>
-            <div class="chip">Signal: <b class="${state.rows.length ? "edge-good" : "edge-warn"}">&nbsp;${state.rows.length ? "LIVE" : "EMPTY"}</b></div>
-          </div>
-
-          <div class="panel-bd" style="padding:0;">
-            <table class="table" id="boardTable">
-              <thead>
-                <tr>
-                  <th>SPORT</th>
-                  <th>START</th>
-                  <th>MATCHUP</th>
-                  <th>MARKET</th>
-                  <th>LINE</th>
-                  <th>ODDS</th>
-                  <th>BOOK</th>
-                  <th>EDGE</th>
-                  <th>SIGNAL</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${state.rows.length ? state.rows.map(r => {
-                  const key = rowKey(r);
-                  const picked = state.slip.some(s => s.key === key);
-
-                  const oddsClass =
-                    r.moveDir === -1 ? "move-up" : r.moveDir === +1 ? "move-down" : "";
-
-                  const oddsArrow =
-                    r.moveDir === -1 ? " ▼" : r.moveDir === +1 ? " ▲" : "";
-
-                  // Existing frontend steam streak + backend steam_detected
-                  const steamOn = !!(r.steam_detected || r.steam);
-                  const steamBadge = steamOn ? `<span class="steam">🔥 STEAM</span>` : "";
-
-                  const sigScore = (toNumber(r.signal_score) ?? 0);
-                  const sigLabel = signalLabel(r.signal_score, r.signal_label);
-                  const sigClass = signalTier(sigScore);
-
-                  return `
-                    <tr class="tr" data-key="${esc(key)}" style="${picked ? "background:rgba(25,245,166,.06)" : ""}">
-                      <td>${esc(r.sport)}</td>
-                      <td class="small">${esc(r.start || "—")}</td>
-                      <td><b>${esc(r.matchup)}</b> ${steamBadge}</td>
-                      <td>${esc(r.market)}</td>
-                      <td>${esc(String(r.line ?? ""))}</td>
-                      <td class="${oddsClass}">
-                        <b>${esc(String(r.odds ?? ""))}</b>${oddsArrow}
-                        ${r.previousOdds != null && r.odds != null && r.odds !== r.previousOdds
-                          ? `<div class="small">was ${esc(String(r.previousOdds))}</div>`
-                          : `<div class="small">&nbsp;</div>`}
-                      </td>
-                      <td class="small">${esc(r.book || "—")}</td>
-                      <td class="${edgeClass(r.edge)}"><b>${esc(String(r.edge ?? "—"))}${r.edge!=null ? "%" : ""}</b></td>
-
-                      <td class="${sigClass}">
-                        <div class="sigwrap">
-                          <b>${esc(String(sigScore))}</b>
-                          <span class="sigpill">${esc(sigLabel)}</span>
-                          ${steamOn ? `<span class="steam">🔥</span>` : ``}
-                        </div>
-                      </td>
-                    </tr>
-                  `;
-                }).join("") : `<tr><td colspan="9" style="padding:14px;color:rgba(234,240,255,.65)">No board data. Click Demo Data or Reload Board.</td></tr>`}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Right: Risk Room -->
-        <div class="panel">
-          <div class="panel-hd">
-            <div>
-              <div class="panel-title">RISK ROOM</div>
-              <div class="panel-sub">Slip math + EV</div>
-            </div>
-            <div class="chip">${esc(state.mode.toUpperCase())} • <b>&nbsp;${state.slip.length} picks</b></div>
-          </div>
-
-          <div class="panel-bd">
-            ${renderSlip()}
-            <div class="hr"></div>
-            <div class="btn primary" id="btnSim">Simulate Ticket</div>
-            <div style="height:8px"></div>
-            <div class="btn" id="btnClear">Clear Slip</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="ticker">
-        <span>
-          ${esc(state.ticker)}
-          ${state.lastMoveTick.length ? " • MOVES: " + esc(state.lastMoveTick.join(" • ")) : ""}
-        </span>
-      </div>
-    </div>
-  `;
-
-  bindUI();
-}
-
-// ---------- Slip render ----------
-function renderSlip() {
-  if (!state.slip.length) {
-    return `<div class="small">Slip is empty. Click a board row to add picks.</div>`;
+    if (!m.has(gKey)){
+      m.set(gKey, {
+        sport,
+        start: r.start,
+        matchup: r.matchup,
+        markets: []
+      });
+    }
+    m.get(gKey).markets.push(r);
   }
 
-  const stake = Math.max(1, toNumber(state.stake) ?? 25);
+  // convert to arrays, sort markets (ML, SPREAD, TOTAL)
+  const sportBlocks = [];
+  for (const [sport, gamesMap] of bySport.entries()){
+    const games = Array.from(gamesMap.values()).map(g => {
+      g.markets.sort((a,b) => {
+        const order = (x) => x.market === "ML" ? 0 : x.market === "SPREAD" ? 1 : x.market === "TOTAL" ? 2 : 9;
+        return order(a) - order(b);
+      });
+      return g;
+    });
 
-  if (state.mode === "single") {
-    const blocks = state.slip.map(p => {
-      const implied = p.impliedP;
-      const model = p.modelP;
-      const dec = p.dec;
+    // sort games by best signal in game (desc)
+    games.sort((a,b) => {
+      const aTop = Math.max(...a.markets.map(x => toNumber(x.signal_score) ?? 0));
+      const bTop = Math.max(...b.markets.map(x => toNumber(x.signal_score) ?? 0));
+      return bTop - aTop;
+    });
 
-      const toWin = dec ? stake * dec : null;
-      const ev = (dec && model != null) ? (stake * (dec * model - 1)) : null;
-      const edgeDelta = (model != null && implied != null) ? (model - implied) : null;
-
-      return `
-        <div style="border:1px solid rgba(120,180,255,.12); background:rgba(7,10,18,.42); border-radius:14px; padding:10px; margin-bottom:10px;">
-          <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
-            <div>
-              <div style="font-weight:800">${esc(p.matchup)}</div>
-              <div class="small">${esc(p.market)} • ${esc(String(p.line ?? ""))} • <b>${esc(String(p.odds))}</b> • ${esc(p.book || "—")}</div>
-            </div>
-            <div class="btn" data-remove="${esc(p.key)}" style="padding:6px 10px; font-size:11px;">Remove</div>
-          </div>
-
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:10px;">
-            <div class="kv"><span>Implied</span><b>${fmtPct(implied)}</b></div>
-            <div class="kv"><span>Model</span><b>${fmtPct(model)}</b></div>
-
-            <div class="kv"><span>Edge Δ</span><b class="${
-              edgeDelta!=null && edgeDelta*100>=2 ? "edge-good" : edgeDelta!=null && edgeDelta*100>=1 ? "edge-warn" : "edge-bad"
-            }">${edgeDelta==null ? "—" : (edgeDelta*100).toFixed(2)+"%"}</b></div>
-
-            <div class="kv"><span>Decimal</span><b>${dec ? dec.toFixed(3) : "—"}</b></div>
-
-            <div class="kv"><span>To Win</span><b>${toWin ? fmtMoney(toWin) : "—"}</b></div>
-            <div class="kv"><span>EV (profit)</span><b class="${ev!=null && ev>=0 ? "edge-good" : "edge-bad"}">${ev!=null ? fmtMoney(ev) : "—"}</b></div>
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    return `
-      <div class="kv"><span>Stake per ticket</span><b>${fmtMoney(stake)}</b></div>
-      <div class="small">Singles mode: each pick is its own ticket estimate.</div>
-      <div style="height:10px"></div>
-      ${blocks}
-    `;
+    sportBlocks.push({ sport, games });
   }
 
-  const parlay = computeParlay(stake, state.slip);
-  return `
-    <div class="kv"><span>Stake</span><b>${fmtMoney(stake)}</b></div>
-    <div class="small">Parlay mode: odds + probabilities multiply.</div>
-    <div style="height:10px"></div>
+  // sport order
+  const sportOrder = ["NBA","NCAAB","NFL","MLB","NHL"];
+  sportBlocks.sort((a,b) => {
+    const ia = sportOrder.indexOf(a.sport);
+    const ib = sportOrder.indexOf(b.sport);
+    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+  });
 
-    <div style="border:1px solid rgba(120,180,255,.12); background:rgba(7,10,18,.42); border-radius:14px; padding:10px;">
-      ${state.slip.map(p => `
-        <div style="display:flex; justify-content:space-between; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid rgba(120,180,255,.08)">
-          <div>
-            <div style="font-weight:800">${esc(p.matchup)}</div>
-            <div class="small">${esc(p.market)} • ${esc(String(p.line ?? ""))} • <b>${esc(String(p.odds))}</b></div>
-          </div>
-          <div class="btn" data-remove="${esc(p.key)}" style="padding:6px 10px; font-size:11px;">Remove</div>
-        </div>
-      `).join("")}
-
-      <div style="margin-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-        <div class="kv"><span>Parlay Decimal</span><b>${parlay.decimal ? parlay.decimal.toFixed(3) : "—"}</b></div>
-        <div class="kv"><span>Implied Prob</span><b>${parlay.impliedP != null ? fmtPct(parlay.impliedP) : "—"}</b></div>
-
-        <div class="kv"><span>Model Prob</span><b>${parlay.modelP != null ? fmtPct(parlay.modelP) : "—"}</b></div>
-        <div class="kv"><span>Edge Δ</span><b class="${
-          parlay.edgeDelta!=null && parlay.edgeDelta*100>=2 ? "edge-good" : parlay.edgeDelta!=null && parlay.edgeDelta*100>=1 ? "edge-warn" : "edge-bad"
-        }">${parlay.edgeDelta==null ? "—" : (parlay.edgeDelta*100).toFixed(2)+"%"}</b></div>
-
-        <div class="kv"><span>To Win</span><b>${parlay.toWin != null ? fmtMoney(parlay.toWin) : "—"}</b></div>
-        <div class="kv"><span>EV (profit)</span><b class="${parlay.ev!=null && parlay.ev>=0 ? "edge-good" : "edge-bad"}">${parlay.ev != null ? fmtMoney(parlay.ev) : "—"}</b></div>
-      </div>
-    </div>
-  `;
+  return sportBlocks;
 }
 
-function computeParlay(stake, picks) {
-  let dec = 1;
-  let implied = 1;
-  let model = 1;
+// ---------- Filters/sorting pipeline ----------
+function applyFilters(rows){
+  let out = rows.slice();
 
-  let anyDec = false;
-  let anyImp = false;
-  let anyModel = false;
-
-  for (const p of picks) {
-    if (p.dec != null) { dec *= p.dec; anyDec = true; }
-    if (p.impliedP != null) { implied *= p.impliedP; anyImp = true; }
-    if (p.modelP != null) { model *= p.modelP; anyModel = true; }
+  if (state.sport !== "ALL"){
+    out = out.filter(r => (r.sport || "") === state.sport);
   }
 
-  const toWin = anyDec ? stake * dec : null;
-  const impliedP = anyImp ? implied : null;
-  const modelP = anyModel ? model : null;
+  const q = state.search.trim().toLowerCase();
+  if (q){
+    out = out.filter(r => String(r.matchup || "").toLowerCase().includes(q) ||
+                          String(r.book || "").toLowerCase().includes(q) ||
+                          String(r.market || "").toLowerCase().includes(q));
+  }
 
-  const ev = (anyDec && anyModel) ? (stake * (dec * modelP - 1)) : null;
-  const edgeDelta = (impliedP != null && modelP != null) ? (modelP - impliedP) : null;
+  out = out.filter(r => (toNumber(r.edge) ?? 0) >= (toNumber(state.minEdge) ?? 0));
+  out = out.filter(r => (toNumber(r.signal_score) ?? 0) >= (toNumber(state.minSignal) ?? 0));
 
-  return { decimal: anyDec ? dec : null, toWin, impliedP, modelP, ev, edgeDelta };
+  if (state.steamOnly){
+    out = out.filter(r => !!(r.steam_detected || r.steam));
+  }
+
+  // sort rows
+  if (state.sortMode === "edge"){
+    out.sort((a,b) => (toNumber(b.edge) ?? 0) - (toNumber(a.edge) ?? 0));
+  } else if (state.sortMode === "start"){
+    out.sort((a,b) => String(a.start||"").localeCompare(String(b.start||"")));
+  } else {
+    out.sort((a,b) => (toNumber(b.signal_score) ?? 0) - (toNumber(a.signal_score) ?? 0));
+  }
+
+  return out;
 }
 
-// ---------- Data ----------
-async function pingBackend() {
-  try {
+// ---------- Backend calls ----------
+async function pingBackend(){
+  try{
     const res = await fetch(`${API_BASE}/`);
     const data = await res.json();
     state.backendOk = !!data.ok;
@@ -555,43 +300,43 @@ async function pingBackend() {
   }
 }
 
-async function loadBoard() {
+async function loadPerformance(){
+  try{
+    const res = await fetch(`${API_BASE}/api/performance`);
+    const data = await res.json();
+    if (data?.ok) state.perf = data;
+  } catch {}
+}
+
+async function loadBoard(){
   await pingBackend();
 
-  if (!state.backendOk) {
+  if (!state.backendOk){
     state.rows = [];
+    state.grouped = [];
     state.lastUpdated = Date.now();
-    state.ticker = "Backend not reachable • check Render service • try Reload Board";
+    state.ticker = "Backend not reachable • check Render • try Reload";
     render();
     return;
   }
 
-  try {
+  try{
     const res = await fetch(`${API_BASE}/api/board`);
     const data = await res.json();
 
     let rows = Array.isArray(data.rows) ? data.rows.map(normalizeRow) : [];
-
-    // DEMO drift so movement shows even with static backend
     rows = applyDemoDrift(rows);
-
-    // Update movement info + steam + ticker feed
     updateMovement(rows);
 
-    // -----------------------------
-    // Phase 2: Auto-sort by Signal Score (desc)
-    // -----------------------------
-    rows.sort((a, b) => {
-      const sa = toNumber(a.signal_score) ?? 0;
-      const sb = toNumber(b.signal_score) ?? 0;
-      return sb - sa;
-    });
+    // apply filters/sort then group to slate blocks
+    const filtered = applyFilters(rows);
+    state.rows = filtered;
+    state.grouped = buildSlate(filtered);
 
-    state.rows = rows;
     state.lastUpdated = Date.now();
-    state.ticker = `VEGAS LIVE • ${rows.length} markets • ${state.mode.toUpperCase()} math online • EV live • Flash = line move • Sorted by SIGNAL`;
+    state.ticker = `EDGE OS LIVE • ${filtered.length} markets • ${state.mode.toUpperCase()} slip • Sort: ${state.sortMode.toUpperCase()} • 🔥 Steam active`;
 
-    // Keep slip updated: match by key (NOTE: key excludes odds so slip survives line moves)
+    // keep slip synced
     const currentKeys = new Set(rows.map(rowKey));
     state.slip = state.slip.filter(s => currentKeys.has(s.key));
 
@@ -600,117 +345,512 @@ async function loadBoard() {
       return match ? { ...normalizeRow(match), key: s.key } : s;
     });
 
+    await loadPerformance();
     render();
-  } catch (err) {
+  } catch (err){
     console.error(err);
     state.rows = [];
+    state.grouped = [];
     state.lastUpdated = Date.now();
-    state.ticker = "Board fetch failed • check /api/board • open backend URL directly to verify";
+    state.ticker = "Board fetch failed • check /api/board";
     render();
   }
 }
 
-function loadDemo() {
-  let demo = [
-    { sport:"NCAAB", start:"02/18, 10:18 PM", matchup:"KANSAS @ BAYLOR", market:"ML", line:"KANSAS", odds:-135, book:"DraftKings", edge:2.4, signal_score: 72, signal_label: "SHARP WATCH", steam_detected: true },
-    { sport:"NBA", start:"02/18, 8:57 PM", matchup:"BOS @ MIA", market:"SPREAD", line:"BOS -2.5", odds:-110, book:"Circa", edge:2.2, signal_score: 58, signal_label: "INTEREST", steam_detected: false },
-    { sport:"NFL", start:"02/18, 10:37 PM", matchup:"KC @ CIN", market:"TOTAL", line:"O 47.5", odds:-108, book:"FanDuel", edge:1.7, signal_score: 24, signal_label: "NOISE", steam_detected: false },
-  ].map(normalizeRow);
-
-  demo = applyDemoDrift(demo);
-  updateMovement(demo);
-
-  demo.sort((a, b) => (toNumber(b.signal_score) ?? 0) - (toNumber(a.signal_score) ?? 0));
-
-  state.backendOk = true;
-  state.rows = demo;
-  state.lastUpdated = Date.now();
-  state.ticker = "DEMO MODE • Vegas drift ON • Signal column live • Sorted by SIGNAL";
+// ---------- Slip logic ----------
+function addToSlip(row){
+  const key = rowKey(row);
+  const idx = state.slip.findIndex(x => x.key === key);
+  if (idx >= 0){
+    state.slip.splice(idx, 1);
+    state.ticker = "Removed pick from slip.";
+  } else {
+    state.slip.push({ ...normalizeRow(row), key });
+    state.ticker = "Added pick to slip.";
+  }
   render();
 }
 
-// ---------- Events ----------
-function bindUI() {
-  const btnReload = document.getElementById("btnReload");
-  const btnPing = document.getElementById("btnPing");
-  const btnDemo = document.getElementById("btnDemo");
-  const btnSim = document.getElementById("btnSim");
-  const btnClear = document.getElementById("btnClear");
+function clearSlip(){
+  state.slip = [];
+  state.ticker = "Slip cleared.";
+  render();
+}
 
-  btnReload?.addEventListener("click", () => loadBoard());
-  btnPing?.addEventListener("click", async () => { await pingBackend(); render(); });
-  btnDemo?.addEventListener("click", () => loadDemo());
-  btnClear?.addEventListener("click", () => { state.slip = []; render(); });
+function computeParlay(stake, picks){
+  let dec = 1, implied=1, model=1;
+  let anyDec=false, anyImp=false, anyModel=false;
 
-  btnSim?.addEventListener("click", () => {
-    const stake = Math.max(1, toNumber(state.stake) ?? 25);
-    if (!state.slip.length) return;
+  for (const p of picks){
+    if (p.dec != null){ dec *= p.dec; anyDec=true; }
+    if (p.impliedP != null){ implied *= p.impliedP; anyImp=true; }
+    if (p.modelP != null){ model *= p.modelP; anyModel=true; }
+  }
 
-    let cost = 0;
-    if (state.mode === "single") cost = stake * state.slip.length;
-    else cost = stake;
+  const decimal = anyDec ? dec : null;
+  const impliedP = anyImp ? implied : null;
+  const modelP = anyModel ? model : null;
+  const cost = stake;
+  const toWin = decimal != null ? stake * decimal : null;
+  const ev = (decimal != null && modelP != null) ? (stake * (decimal * modelP - 1)) : null;
+  const edgeDelta = (impliedP != null && modelP != null) ? (modelP - impliedP) : null;
 
-    if (state.bankroll < cost) {
-      state.ticker = "Insufficient bankroll for this ticket.";
-      render();
-      return;
+  return { decimal, impliedP, modelP, cost, toWin, ev, edgeDelta };
+}
+
+async function logTicket(){
+  if (!state.slip.length) return;
+
+  const stake = Math.max(1, toNumber(state.stake) ?? 25);
+  const bankroll = Math.max(0, toNumber(state.bankroll) ?? 10000);
+
+  // build legs payload (use normalized slip entries)
+  const legs = state.slip.map(p => ({
+    sport: p.sport,
+    start: p.start,
+    matchup: p.matchup,
+    market: p.market,
+    line: String(p.line ?? ""),
+    odds: p.odds,
+    book: p.book,
+    edge: p.edge,
+    signal_score: p.signal_score,
+    signal_label: p.signal_label,
+    steam_detected: !!p.steam_detected
+  }));
+
+  const payload = {
+    mode: state.mode,
+    stake,
+    bankroll,
+    legs,
+    meta: {
+      source: "EdgeOS",
+      sortMode: state.sortMode,
+      filters: {
+        sport: state.sport,
+        minEdge: state.minEdge,
+        minSignal: state.minSignal,
+        steamOnly: state.steamOnly
+      }
+    }
+  };
+
+  try{
+    const res = await fetch(`${API_BASE}/api/tickets`, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data?.ok){
+      state.ticker = `Ticket logged ✅ (${data.created_ticket_ids.length} ticket(s))`;
+      await loadPerformance();
+    } else {
+      state.ticker = `Ticket log failed: ${data?.error || "unknown"}`;
+    }
+  } catch(e){
+    state.ticker = "Ticket log failed • backend unreachable";
+  }
+
+  render();
+}
+
+// CSV export
+function downloadText(filename, content){
+  const blob = new Blob([content], {type:"text/plain;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportSlipCSV(){
+  if (!state.slip.length) return;
+  const cols = ["sport","start","matchup","market","line","odds","book","edge","signal_score","signal_label","steam_detected"];
+  const lines = [cols.join(",")];
+  for (const p of state.slip){
+    const row = cols.map(c => {
+      const v = p[c];
+      const s = (v === null || v === undefined) ? "" : String(v);
+      return `"${s.replaceAll('"','""')}"`;
+    });
+    lines.push(row.join(","));
+  }
+  downloadText(`starks_slip_${Date.now()}.csv`, lines.join("\n"));
+  state.ticker = "Slip exported CSV ✅";
+  render();
+}
+
+async function exportTicketsCSV(){
+  try{
+    const res = await fetch(`${API_BASE}/api/tickets?limit=200`);
+    const data = await res.json();
+    if (!data?.ok) return;
+
+    const cols = ["ticket_id","created_at","mode","stake","cost","decimal_odds","implied_prob","model_prob","ev_profit","status","result","profit"];
+    const lines = [cols.join(",")];
+
+    for (const t of data.tickets){
+      const row = [
+        t.id, t.created_at, t.mode, t.stake, t.cost,
+        t.decimal_odds ?? "", t.implied_prob ?? "", t.model_prob ?? "", t.ev_profit ?? "",
+        t.status, t.result ?? "", t.profit ?? ""
+      ].map(x => `"${String(x).replaceAll('"','""')}"`);
+      lines.push(row.join(","));
     }
 
-    state.bankroll = Math.max(0, state.bankroll - cost);
-    state.ticker = `Ticket simulated • Cost ${fmtMoney(cost)} • Bankroll now ${fmtMoney(state.bankroll)}`;
+    downloadText(`starks_tickets_${Date.now()}.csv`, lines.join("\n"));
+    state.ticker = "Ticket history exported CSV ✅";
     render();
+  } catch {}
+}
+
+// ---------- UI ----------
+function render(){
+  const last = state.lastUpdated ? new Date(state.lastUpdated).toLocaleTimeString() : "—";
+  const dotCls = state.backendOk ? "dot ok" : "dot";
+
+  const sportSet = new Set(state.rows.map(r => r.sport).filter(Boolean));
+  const sportOptions = ["ALL", ...Array.from(sportSet).sort()];
+
+  // performance
+  const p = state.perf || {};
+  const roiPct = (toNumber(p.roi) ?? 0) * 100;
+  const wrPct = (toNumber(p.winrate) ?? 0) * 100;
+
+  // slip stats
+  const stake = Math.max(1, toNumber(state.stake) ?? 25);
+  const slipCount = state.slip.length;
+
+  let slipSummary = "";
+  if (!slipCount){
+    slipSummary = `<div class="kv"><span>Slip</span><b>Empty</b></div>`;
+  } else if (state.mode === "parlay"){
+    const par = computeParlay(stake, state.slip);
+    slipSummary = `
+      <div class="kv"><span>Slip</span><b>${slipCount} legs</b></div>
+      <div class="kv"><span>Parlay Decimal</span><b>${par.decimal ? par.decimal.toFixed(3) : "—"}</b></div>
+      <div class="kv"><span>Implied</span><b>${par.impliedP != null ? fmtPct(par.impliedP) : "—"}</b></div>
+      <div class="kv"><span>Model</span><b>${par.modelP != null ? fmtPct(par.modelP) : "—"}</b></div>
+      <div class="kv"><span>EV</span><b>${par.ev != null ? fmtMoney(par.ev) : "—"}</b></div>
+    `;
+  } else {
+    slipSummary = `
+      <div class="kv"><span>Slip</span><b>${slipCount} singles</b></div>
+      <div class="kv"><span>Stake / ticket</span><b>${fmtMoney(stake)}</b></div>
+    `;
+  }
+
+  app.innerHTML = `
+    <div class="app">
+      <div class="rail">
+        <div class="logo">
+          <div class="logoDot"></div>
+          <div class="logoTxt">STARKS<br/>EDGE OS</div>
+        </div>
+        <div class="railNav">
+          <div class="navBtn active" data-nav="today"><div class="navIco">🏟️</div></div>
+          <div class="navBtn" data-nav="live"><div class="navIco">⚡</div></div>
+          <div class="navBtn" data-nav="lab"><div class="navIco">📈</div></div>
+          <div class="navBtn" data-nav="settings"><div class="navIco">⚙️</div></div>
+        </div>
+      </div>
+
+      <div class="main">
+        <div class="top">
+          <div class="hero">
+            <div class="heroIn">
+              <div>
+                <div class="heroTitle">Starks Sportsbook LLC — Hybrid Intelligence Terminal</div>
+                <div class="heroSub">Euro sportsbook slate + Vegas risk desk • Edge Tracker • AI Brain • Mobile-ready</div>
+              </div>
+              <div class="chips">
+                <div class="chip"><div class="${dotCls}"></div>${state.backendOk ? "Backend OK" : "Backend Issue"}</div>
+                <div class="chip">Last <b style="color:var(--text)">${esc(last)}</b></div>
+                <div class="chip">Auto <b style="color:var(--text)">${Math.round(REFRESH_MS/1000)}s</b></div>
+                <div class="chip">Mode <b style="color:var(--text)">${esc(state.mode.toUpperCase())}</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CENTER: BOARD -->
+        <div class="panel">
+          <div class="panelHd">
+            <div>
+              <div class="panelTitle">TODAY'S SLATE</div>
+              <div class="panelSub">Grouped by sport • click odds tiles to build slip • sorted by ${esc(state.sortMode.toUpperCase())}</div>
+            </div>
+            <div class="btnRow">
+              <button class="btn" id="btnReload">Reload</button>
+              <button class="btn" id="btnExportTickets">Export Tickets CSV</button>
+            </div>
+          </div>
+          <div class="panelBd">
+            <div class="controls">
+              <div class="field">
+                <div class="label">Sport</div>
+                <select class="select" id="sportSel">
+                  ${sportOptions.map(s => `<option value="${esc(s)}" ${s===state.sport ? "selected":""}>${esc(s)}</option>`).join("")}
+                </select>
+              </div>
+              <div class="field">
+                <div class="label">Search</div>
+                <input class="input" id="search" placeholder="Team, matchup, book…" value="${esc(state.search)}" />
+              </div>
+
+              <div class="field">
+                <div class="label">Min Edge %</div>
+                <input class="input" id="minEdge" type="number" step="0.1" value="${esc(state.minEdge)}" />
+              </div>
+              <div class="field">
+                <div class="label">Min Signal</div>
+                <input class="input" id="minSignal" type="number" step="1" value="${esc(state.minSignal)}" />
+              </div>
+            </div>
+
+            <div class="pillRow">
+              <div class="pill ${state.steamOnly ? "active":""}" id="steamOnly">🔥 Steam Only</div>
+              <div class="pill ${state.sortMode==="signal" ? "active":""}" data-sort="signal">Sort: Signal</div>
+              <div class="pill ${state.sortMode==="edge" ? "active":""}" data-sort="edge">Sort: Edge</div>
+              <div class="pill ${state.sortMode==="start" ? "active":""}" data-sort="start">Sort: Start</div>
+            </div>
+
+            <div class="hr"></div>
+
+            <div class="slate">
+              ${state.grouped.length ? state.grouped.map(block => {
+                const games = block.games || [];
+                return `
+                  <div class="league">
+                    <div class="leagueHd">
+                      <div class="leagueName">${esc(block.sport)}</div>
+                      <div class="leagueMeta">${games.length} games • ${state.rows.filter(r => r.sport===block.sport).length} markets</div>
+                    </div>
+                    ${games.map(g => {
+                      // top tags from best market
+                      const bestSig = Math.max(...g.markets.map(m => toNumber(m.signal_score) ?? 0));
+                      const bestEdge = Math.max(...g.markets.map(m => toNumber(m.edge) ?? 0));
+                      const tier = signalTier(bestSig);
+
+                      const tagSig = bestSig >= 81 ? "good" : bestSig >= 61 ? "good" : bestSig >= 31 ? "warn" : "";
+                      const tagEdge = bestEdge >= 3 ? "good" : bestEdge >= 2 ? "warn" : "bad";
+
+                      return `
+                        <div class="game">
+                          <div class="gLeft">
+                            <div class="mu">${esc(g.matchup || "—")}</div>
+                            <div class="sub">
+                              <span>${esc(g.start || "—")}</span>
+                              <span class="tag ${tagEdge}">Edge max ${bestEdge.toFixed(2)}%</span>
+                              <span class="tag ${tagSig}">Signal max ${bestSig}</span>
+                            </div>
+                          </div>
+                          <div class="tileRow">
+                            ${g.markets.map(m => {
+                              const s = toNumber(m.signal_score) ?? 0;
+                              const t = signalTier(s);
+                              const steamOn = !!(m.steam_detected || m.steam);
+                              const flash = (m.moveDir === -1) ? "flashUp" : (m.moveDir === +1) ? "flashDown" : "";
+                              const pillCls = `${t.cls} sigPill`;
+
+                              return `
+                                <div class="tile ${flash}" data-pick="${esc(rowKey(m))}">
+                                  <div class="tTop">
+                                    <span><b>${esc(m.market || "")}</b></span>
+                                    <span class="${pillCls}">${esc(t.short)} ${esc(String(s))}${steamOn ? " 🔥" : ""}</span>
+                                  </div>
+                                  <div class="tMid">
+                                    <span class="ln">${esc(String(m.line ?? ""))}</span>
+                                    <span class="od">${esc(String(m.odds ?? ""))}</span>
+                                  </div>
+                                  <div class="tBot">
+                                    <span>${esc(m.book || "—")}</span>
+                                    <span>Edge ${esc(String(m.edge ?? "—"))}%</span>
+                                  </div>
+                                </div>
+                              `;
+                            }).join("")}
+                          </div>
+                        </div>
+                      `;
+                    }).join("")}
+                  </div>
+                `;
+              }).join("") : `
+                <div style="color:rgba(234,240,255,.65); padding:10px;">
+                  No markets match your filters.
+                </div>
+              `}
+            </div>
+
+            <div class="ticker">
+              ${esc(state.ticker)}
+              ${state.lastMoveTick.length ? "<br/>MOVES: " + esc(state.lastMoveTick.join(" • ")) : ""}
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT: AI / RISK -->
+        <div class="panel">
+          <div class="panelHd">
+            <div>
+              <div class="panelTitle">AI BRAIN + RISK ROOM</div>
+              <div class="panelSub">Slip builder • ticket logging • performance lab</div>
+            </div>
+            <div class="btnRow">
+              <button class="btn" id="btnExportSlip">Export Slip CSV</button>
+              <button class="btn danger" id="btnClearSlip">Clear</button>
+            </div>
+          </div>
+
+          <div class="panelBd">
+            <div class="stack">
+              <div class="kv"><span>Performance (30-day lab)</span><b>${fmtMoney(toNumber(p.profit_30d) ?? 0)}</b></div>
+              <div class="kv"><span>Total tickets</span><b>${esc(String(p.total_tickets ?? 0))}</b></div>
+              <div class="kv"><span>Win rate</span><b>${wrPct.toFixed(1)}%</b></div>
+              <div class="kv"><span>ROI</span><b>${roiPct.toFixed(2)}%</b></div>
+
+              <div class="hr"></div>
+
+              <div class="row2">
+                <div class="field" style="flex:1">
+                  <div class="label">Mode</div>
+                  <select class="select" id="modeSel">
+                    <option value="parlay" ${state.mode==="parlay"?"selected":""}>PARLAY</option>
+                    <option value="single" ${state.mode==="single"?"selected":""}>SINGLES</option>
+                  </select>
+                </div>
+                <div class="field" style="flex:1">
+                  <div class="label">Stake</div>
+                  <input class="input" id="stake" type="number" min="1" step="1" value="${esc(state.stake)}" />
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="label">Bankroll</div>
+                <input class="input" id="bankroll" type="number" min="0" step="1" value="${esc(state.bankroll)}" />
+              </div>
+
+              ${slipSummary}
+
+              <div class="btnRow">
+                <button class="btn primary" id="btnLog">Log Ticket</button>
+                <button class="btn" id="btnRefreshPerf">Refresh Perf</button>
+              </div>
+
+              <div class="hr"></div>
+
+              <div class="panelTitle" style="margin-bottom:8px;">Slip Legs</div>
+              ${state.slip.length ? state.slip.map(p => {
+                const s = toNumber(p.signal_score) ?? 0;
+                const t = signalTier(s);
+                return `
+                  <div class="kv" style="align-items:flex-start;">
+                    <span>
+                      <b style="color:var(--text)">${esc(p.matchup || "")}</b><br/>
+                      <span style="color:var(--muted2)">${esc(p.market || "")} • ${esc(String(p.line ?? ""))} • ${esc(String(p.odds ?? ""))} • ${esc(p.book || "—")}</span>
+                    </span>
+                    <b class="${t.cls}" style="padding:2px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.20);">
+                      ${esc(t.short)} ${esc(String(s))}
+                    </b>
+                  </div>
+                `;
+              }).join("") : `<div style="color:rgba(234,240,255,.65)">Slip empty — click odds tiles.</div>`}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- mobile drawer -->
+      <div class="drawer">
+        <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
+          <div style="font-weight:900;">Slip: ${slipCount} ${state.mode==="parlay"?"legs":"singles"}</div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn primary" id="btnLog2" style="height:38px;">Log</button>
+            <button class="btn" id="btnClearSlip2" style="height:38px;">Clear</button>
+          </div>
+        </div>
+        <div style="margin-top:8px; color:rgba(234,240,255,.65); font-size:12px;">
+          Tap tiles to add/remove picks • Export and performance are in the right panel on desktop.
+        </div>
+      </div>
+    </div>
+  `;
+
+  bindUI();
+}
+
+// ---------- Bind UI ----------
+function bindUI(){
+  document.getElementById("btnReload")?.addEventListener("click", () => loadBoard());
+  document.getElementById("btnExportSlip")?.addEventListener("click", () => exportSlipCSV());
+  document.getElementById("btnExportTickets")?.addEventListener("click", () => exportTicketsCSV());
+  document.getElementById("btnClearSlip")?.addEventListener("click", () => clearSlip());
+  document.getElementById("btnClearSlip2")?.addEventListener("click", () => clearSlip());
+  document.getElementById("btnLog")?.addEventListener("click", () => logTicket());
+  document.getElementById("btnLog2")?.addEventListener("click", () => logTicket());
+  document.getElementById("btnRefreshPerf")?.addEventListener("click", async () => { await loadPerformance(); render(); });
+
+  document.getElementById("sportSel")?.addEventListener("change", (e) => {
+    state.sport = e.target.value;
+    loadBoard();
+  });
+  document.getElementById("search")?.addEventListener("input", (e) => {
+    state.search = e.target.value;
+    loadBoard();
+  });
+  document.getElementById("minEdge")?.addEventListener("change", (e) => {
+    state.minEdge = toNumber(e.target.value) ?? 0;
+    loadBoard();
+  });
+  document.getElementById("minSignal")?.addEventListener("change", (e) => {
+    state.minSignal = toNumber(e.target.value) ?? 0;
+    loadBoard();
   });
 
-  const stakeInput = document.getElementById("stake");
-  const bankrollInput = document.getElementById("bankroll");
-  stakeInput?.addEventListener("change", (e) => {
+  document.getElementById("steamOnly")?.addEventListener("click", () => {
+    state.steamOnly = !state.steamOnly;
+    loadBoard();
+  });
+
+  document.querySelectorAll("[data-sort]")?.forEach(el => {
+    el.addEventListener("click", () => {
+      state.sortMode = el.getAttribute("data-sort") || "signal";
+      loadBoard();
+    });
+  });
+
+  document.getElementById("modeSel")?.addEventListener("change", (e) => {
+    state.mode = e.target.value;
+    render();
+  });
+  document.getElementById("stake")?.addEventListener("change", (e) => {
     state.stake = Math.max(1, toNumber(e.target.value) ?? 25);
     render();
   });
-  bankrollInput?.addEventListener("change", (e) => {
+  document.getElementById("bankroll")?.addEventListener("change", (e) => {
     state.bankroll = Math.max(0, toNumber(e.target.value) ?? 10000);
     render();
   });
 
-  document.querySelectorAll("[data-mode]").forEach(el => {
+  // tile click to add/remove
+  document.querySelectorAll("[data-pick]")?.forEach(el => {
     el.addEventListener("click", () => {
-      state.mode = el.getAttribute("data-mode");
-      state.ticker = `${state.mode.toUpperCase()} mode armed • Slip math recalculated`;
-      render();
-    });
-  });
-
-  document.querySelectorAll("tr[data-key]").forEach(tr => {
-    tr.addEventListener("click", () => {
-      const key = tr.getAttribute("data-key");
+      const key = el.getAttribute("data-pick");
       const row = state.rows.find(r => rowKey(r) === key);
-      if (!row) return;
-
-      const idx = state.slip.findIndex(s => s.key === key);
-      if (idx >= 0) {
-        state.slip.splice(idx, 1);
-        state.ticker = "Removed pick from slip.";
-      } else {
-        state.slip.push({ ...normalizeRow(row), key });
-        state.ticker = "Added pick to slip.";
-      }
-      render();
-    });
-  });
-
-  document.querySelectorAll("[data-remove]").forEach(btn => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const key = btn.getAttribute("data-remove");
-      state.slip = state.slip.filter(s => s.key !== key);
-      state.ticker = "Removed pick from slip.";
-      render();
+      if (row) addToSlip(row);
     });
   });
 }
 
 // ---------- Boot ----------
-async function boot() {
+async function boot(){
   render();
   await loadBoard();
   setInterval(loadBoard, REFRESH_MS);
