@@ -1,0 +1,295 @@
+/* ==========================================
+   STARKS SPORTSBOOK LLC
+   VEGAS RISK ROOM TERMINAL THEME
+   Full Reset Build
+========================================== */
+
+/* ===== ROOT VARIABLES ===== */
+:root {
+  --bg-primary: #0b0f14;
+  --bg-secondary: #121821;
+  --bg-panel: #141c26;
+  --bg-glass: rgba(20, 28, 38, 0.65);
+
+  --border-soft: rgba(255,255,255,0.06);
+  --border-strong: rgba(255,255,255,0.12);
+
+  --text-primary: #e6edf3;
+  --text-secondary: #9fb3c8;
+  --text-dim: #6b7c8f;
+
+  --accent-green: #00ff88;
+  --accent-amber: #ffcc00;
+  --accent-red: #ff4d4d;
+  --accent-blue: #2d9cff;
+
+  --heat-hot: #ff3b3b;
+  --heat-warm: #ff914d;
+  --heat-neutral: #2a3442;
+  --heat-cool: #00b3ff;
+
+  --radius: 10px;
+}
+
+/* ===== GLOBAL RESET ===== */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: linear-gradient(180deg, #0b0f14 0%, #0d131a 100%);
+  color: var(--text-primary);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont;
+  height: 100%;
+}
+
+/* ===== TERMINAL SHELL ===== */
+.terminal-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== HEADER ===== */
+.terminal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-secondary);
+}
+
+.terminal-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.title-text {
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  font-size: 14px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  opacity: 0.9;
+}
+
+.dot-green { background: var(--accent-green); }
+.dot-amber { background: var(--accent-amber); }
+.dot-red { background: var(--accent-red); }
+
+/* ===== STATUS BAR ===== */
+.terminal-status {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pill {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid var(--border-soft);
+  background: var(--bg-panel);
+  letter-spacing: 0.5px;
+}
+
+.pill.ok {
+  border-color: rgba(0,255,136,0.4);
+  color: var(--accent-green);
+}
+
+.pill.warn {
+  border-color: rgba(255,204,0,0.4);
+  color: var(--accent-amber);
+}
+
+.pill.bad {
+  border-color: rgba(255,77,77,0.4);
+  color: var(--accent-red);
+}
+
+.pill.subtle {
+  color: var(--text-secondary);
+}
+
+/* ===== MAIN GRID LAYOUT ===== */
+.terminal-main {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 0.9fr;
+  gap: 14px;
+  padding: 16px;
+  flex: 1;
+}
+
+/* ===== PANEL ===== */
+.panel {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-title {
+  padding: 12px 14px;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+}
+
+.panel-body {
+  padding: 12px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ===== BOOT TEXT ===== */
+.bootline {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* ===== TRADING GRID READY STYLES ===== */
+.grid-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.grid-table th {
+  text-align: left;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 8px;
+  border-bottom: 1px solid var(--border-soft);
+  letter-spacing: 0.5px;
+}
+
+.grid-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.grid-row:hover {
+  background: rgba(255,255,255,0.04);
+  transition: 120ms ease;
+}
+
+/* ===== HEAT COLORS ===== */
+.heat-hot {
+  background: rgba(255,59,59,0.15);
+  color: var(--heat-hot);
+}
+
+.heat-warm {
+  background: rgba(255,145,77,0.12);
+  color: var(--heat-warm);
+}
+
+.heat-neutral {
+  background: rgba(42,52,66,0.6);
+  color: var(--text-secondary);
+}
+
+.heat-cool {
+  background: rgba(0,179,255,0.12);
+  color: var(--heat-cool);
+}
+
+/* ===== EDGE METER (future ready) ===== */
+.edge-meter {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--heat-neutral);
+  overflow: hidden;
+}
+
+.edge-fill {
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    #00ff88 0%,
+    #ffcc00 50%,
+    #ff3b3b 100%
+  );
+  transition: width 300ms ease;
+}
+
+/* ===== FLOATING PARLAY DESK ===== */
+.parlay-floating {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 320px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 14px;
+  box-shadow: 0 12px 35px rgba(0,0,0,0.45);
+  z-index: 999;
+}
+
+/* ===== TOAST SYSTEM ===== */
+.toast-stack {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 1000;
+}
+
+.toast {
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-soft);
+  font-size: 13px;
+  min-width: 260px;
+  opacity: 0.95;
+  transition: 200ms ease;
+}
+
+.toast.ok {
+  border-color: rgba(0,255,136,0.5);
+}
+
+.toast.error {
+  border-color: rgba(255,77,77,0.5);
+}
+
+.toast.out {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+/* ===== SCROLLBAR CLEANUP ===== */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.08);
+  border-radius: 999px;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 1200px) {
+  .terminal-main {
+    grid-template-columns: 1fr;
+  }
+}
